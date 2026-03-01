@@ -254,12 +254,25 @@ class Queue:
 
         for task in self._queue:
             metadata = task.metadata
-            if task_count[task.user_id] >= 3:
-                metadata["group_earliest_timestamp"] = priority_timestamps[task.user_id]
-                metadata["priority"] = Priority.HIGH
-            else:
+            current_earliest = metadata.get("group_earliest_timestamp", MAX_TIMESTAMP)
+            raw_priority = metadata.get("priority")
+            try:
+                priority_level = Priority(raw_priority)
+            except (TypeError, ValueError):
+                priority_level = None
+
+            # Preserve legacy "sticky promotion" behavior once a task has been
+            # promoted, while still allowing new promotions when a user reaches 3.
+            if priority_level is None or priority_level == Priority.NORMAL:
                 metadata["group_earliest_timestamp"] = MAX_TIMESTAMP
-                metadata["priority"] = Priority.NORMAL
+                if task_count[task.user_id] >= 3:
+                    metadata["group_earliest_timestamp"] = priority_timestamps[task.user_id]
+                    metadata["priority"] = Priority.HIGH
+                else:
+                    metadata["priority"] = Priority.NORMAL
+            else:
+                metadata["group_earliest_timestamp"] = current_earliest
+                metadata["priority"] = priority_level
 
         self._queue.sort(
             key=lambda i: (
@@ -395,3 +408,4 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
