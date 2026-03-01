@@ -1,3 +1,5 @@
+"""Contract tests for the IWC queue implementation."""
+
 from __future__ import annotations
 
 import time
@@ -343,6 +345,7 @@ def test_rule_of_three_uses_unique_pending_tasks() -> None:
             call_size().expect(0),
         ]
     )
+
 
 
 

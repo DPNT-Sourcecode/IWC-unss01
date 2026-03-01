@@ -1,3 +1,5 @@
+"""Shared test helpers for IWC queue contract scenarios."""
+
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
@@ -110,7 +112,7 @@ SCENARIO_BASE = datetime(2025, 10, 20, 12, 0, 0)
 
 def scenario_ts(*, delta_seconds: int = 0) -> str:
     """
-    Deterministic timestamp in challenge format: YYYY-MM-DD HH:MM:SS.
+    Deterministic timestamp in queue contract format: YYYY-MM-DD HH:MM:SS.
     """
     return (SCENARIO_BASE + timedelta(seconds=delta_seconds)).strftime(
         "%Y-%m-%d %H:%M:%S"
@@ -190,5 +192,6 @@ __all__ = [
     "normalize_dispatch",
     "dequeue_task",
 ]
+
 
 
