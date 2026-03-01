@@ -1,3 +1,27 @@
+"""IWC legacy queue implementation.
+
+This module intentionally preserves legacy queue behavior while we evolve it
+towards the Round 1 (``IWC_R1``) contract.
+
+R1 behavior that must be satisfied end-to-end:
+- Rule of 3: if a user has 3 or more queued tasks, all of their tasks are
+  processed before normal-priority users.
+- Timestamp ordering: within equal priority tiers, older timestamps are
+  processed first.
+- Dependency resolution: enqueuing a task also enqueues its dependencies before
+  the task itself.
+- Method contracts:
+  - ``enqueue`` returns current queue size.
+  - ``dequeue`` returns ``provider``, ``user_id``, and ``timestamp`` or ``None``.
+  - ``size`` returns pending task count.
+  - ``age`` returns queue internal age in seconds.
+  - ``purge`` clears the queue and returns ``True``.
+
+Current known implementation gaps versus R1:
+- ``dequeue`` currently drops ``timestamp`` from dispatch payload.
+- ``age`` currently returns ``0`` unconditionally.
+"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
@@ -13,6 +37,8 @@ class Priority(IntEnum):
 
 @dataclass
 class Provider:
+    """Provider configuration used to derive task dependency chains."""
+
     name: str
     base_url: str
     depends_on: list[str]
@@ -48,10 +74,35 @@ REGISTERED_PROVIDERS: list[Provider] = [
 ]
 
 class Queue:
+    """In-memory legacy queue used by the IWC challenge runner.
+
+    Notes:
+    - This class is intentionally small and synchronous to match challenge
+      runner expectations.
+    - Ordering is computed at dequeue time by mutating task metadata and
+      sorting the internal list.
+
+    Implementation checklist for R1 compliance:
+    1. Include ``timestamp`` in ``TaskDispatch`` returned by ``dequeue``.
+    2. Compute ``age`` as internal queue age in seconds (based on oldest
+       pending task; ``0`` when empty).
+    3. Keep Rule-of-3, timestamp ordering, and dependency behavior unchanged.
+    """
+
     def __init__(self):
         self._queue = []
 
     def _collect_dependencies(self, task: TaskSubmission) -> list[TaskSubmission]:
+        """Return transitive dependencies for a task in execution order.
+
+        Args:
+            task: Task being enqueued.
+
+        Returns:
+            A flat list of dependency tasks that must execute before ``task``.
+            Dependencies are returned depth-first so deeper prerequisites appear
+            earlier in the list.
+        """
         provider = next((p for p in REGISTERED_PROVIDERS if p.name == task.provider), None)
         if provider is None:
             return []
@@ -69,6 +120,7 @@ class Queue:
 
     @staticmethod
     def _priority_for_task(task):
+        """Extract a normalized priority enum from task metadata."""
         metadata = task.metadata
         raw_priority = metadata.get("priority", Priority.NORMAL)
         try:
@@ -78,11 +130,13 @@ class Queue:
 
     @staticmethod
     def _earliest_group_timestamp_for_task(task):
+        """Return group-level earliest timestamp used for user-priority ordering."""
         metadata = task.metadata
         return metadata.get("group_earliest_timestamp", MAX_TIMESTAMP)
 
     @staticmethod
     def _timestamp_for_task(task):
+        """Return a naive ``datetime`` representation for task timestamp sorting."""
         timestamp = task.timestamp
         if isinstance(timestamp, datetime):
             return timestamp.replace(tzinfo=None)
@@ -91,6 +145,14 @@ class Queue:
         return timestamp
 
     def enqueue(self, item: TaskSubmission) -> int:
+        """Enqueue a task and its dependencies.
+
+        Args:
+            item: Task request payload.
+
+        Returns:
+            Current queue size after enqueue completes.
+        """
         tasks = [*self._collect_dependencies(item), item]
 
         for task in tasks:
@@ -101,6 +163,21 @@ class Queue:
         return self.size
 
     def dequeue(self):
+        """Dequeue the next task according to legacy priority rules.
+
+        Ordering strategy:
+        1. Promote users with at least three queued tasks (Rule of 3).
+        2. For promoted users, order by each user's earliest queued timestamp.
+        3. Break ties with task timestamp ordering (oldest first).
+
+        Returns:
+            ``TaskDispatch`` for the next task, or ``None`` when queue is empty.
+
+        R1 gap:
+            Returned dispatch payload currently includes ``provider`` and
+            ``user_id`` only. ``timestamp`` must be added for full R1
+            compliance.
+        """
         if self.size == 0:
             return None
 
@@ -149,13 +226,28 @@ class Queue:
 
     @property
     def size(self):
+        """Number of pending tasks currently in the queue."""
         return len(self._queue)
 
     @property
     def age(self):
+        """Internal queue age in seconds.
+
+        R1 target behavior:
+            - Return ``0`` when queue is empty.
+            - Otherwise return age of the oldest pending task in seconds.
+
+        Current behavior:
+            Always returns ``0`` (placeholder).
+        """
         return 0
 
     def purge(self):
+        """Clear all pending tasks from the queue.
+
+        Returns:
+            ``True`` when purge completes.
+        """
         self._queue.clear()
         return True
 
@@ -242,3 +334,4 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
