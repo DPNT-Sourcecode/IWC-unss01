@@ -242,3 +242,105 @@ def test_user_id_string_is_supported_end_to_end() -> None:
             call_size().expect(0),
         ]
     )
+
+
+def test_r2_deduplicate_keeps_single_pair_when_newer_duplicate_arrives() -> None:
+    """
+    IWC_R2: duplicate (user_id, provider) tasks should collapse into one item.
+    Newer duplicates must not replace older timestamps.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("bank_statements", 1, "2025-10-20 12:05:00").expect(1),
+            call_enqueue("id_verification", 1, "2025-10-20 12:05:00").expect(2),
+            call_dequeue_full().expect("bank_statements", 1),
+            call_dequeue_full().expect("id_verification", 1),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_r2_deduplicate_replaces_existing_when_older_duplicate_arrives() -> None:
+    """
+    IWC_R2: when duplicate timestamps differ, dedup should keep the older one.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:05:00").expect(1),
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("id_verification", 1, "2025-10-20 12:01:00").expect(2),
+            call_dequeue_full().expect("bank_statements", 1),
+            call_dequeue_full().expect("id_verification", 1),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_r2_deduplicate_is_scoped_to_user_provider_pair() -> None:
+    """
+    IWC_R2: same provider for different users are distinct tasks and must not deduplicate.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("bank_statements", 2, "2025-10-20 12:01:00").expect(2),
+            call_size().expect(2),
+            call_dequeue_full().expect("bank_statements", 1),
+            call_dequeue_full().expect("bank_statements", 2),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_r2_deduplicate_applies_to_dependency_tasks() -> None:
+    """
+    IWC_R2: dedup applies even when the duplicate is introduced via dependencies.
+    """
+    run_queue(
+        [
+            call_enqueue("companies_house", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("credit_check", 1, "2025-10-20 12:05:00").expect(2),
+            call_dequeue_full().expect("companies_house", 1),
+            call_dequeue_full().expect("credit_check", 1),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_r2_duplicate_credit_check_deduplicates_both_self_and_dependency() -> None:
+    """
+    IWC_R2: enqueuing duplicate credit_check should not duplicate either
+    credit_check itself or its companies_house dependency.
+    """
+    run_queue(
+        [
+            call_enqueue("credit_check", 1, "2025-10-20 12:00:00").expect(2),
+            call_enqueue("credit_check", 1, "2025-10-20 12:05:00").expect(2),
+            call_size().expect(2),
+            call_dequeue_full().expect("companies_house", 1),
+            call_dequeue_full().expect("credit_check", 1),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_r2_rule_of_three_uses_unique_tasks_after_deduplication() -> None:
+    """
+    IWC_R2 + legacy Rule-of-3: duplicates must not inflate user task counts.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("bank_statements", 1, "2025-10-20 12:01:00").expect(1),
+            call_enqueue("id_verification", 1, "2025-10-20 12:02:00").expect(2),
+            call_enqueue("companies_house", 1, "2025-10-20 12:03:00").expect(3),
+            call_enqueue("bank_statements", 2, "2025-10-20 11:00:00").expect(4),
+            call_dequeue_full().expect("bank_statements", 1),
+            call_dequeue_full().expect("id_verification", 1),
+            call_dequeue_full().expect("companies_house", 1),
+            call_dequeue_full().expect("bank_statements", 2),
+            call_size().expect(0),
+        ]
+    )
+

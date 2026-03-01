@@ -80,6 +80,33 @@ class Queue:
         """
         self._queue = []
 
+    @staticmethod
+    def _dedup_key_for_task(task: TaskSubmission) -> tuple[int | str, str]:
+        """Return deduplication key for a task.
+
+        Args:
+            task: Task to identify in queue.
+
+        Returns:
+            Tuple of ``(user_id, provider)`` used by R2 deduplication rule.
+        """
+        return task.user_id, task.provider
+
+    def _find_existing_task_index(self, task: TaskSubmission) -> int | None:
+        """Find index of an existing task with same ``(user_id, provider)``.
+
+        Args:
+            task: Task candidate for insertion.
+
+        Returns:
+            Index in internal queue when duplicate exists, otherwise ``None``.
+        """
+        key = self._dedup_key_for_task(task)
+        for index, queued_task in enumerate(self._queue):
+            if self._dedup_key_for_task(queued_task) == key:
+                return index
+        return None
+
     def _collect_dependencies(self, task: TaskSubmission) -> list[TaskSubmission]:
         """Return transitive dependency tasks for a submission.
 
@@ -169,10 +196,22 @@ class Queue:
         tasks = [*self._collect_dependencies(item), item]
 
         for task in tasks:
-            metadata = task.metadata
-            metadata.setdefault("priority", Priority.NORMAL)
-            metadata.setdefault("group_earliest_timestamp", MAX_TIMESTAMP)
-            self._queue.append(task)
+            existing_index = self._find_existing_task_index(task)
+            if existing_index is None:
+                metadata = task.metadata
+                metadata.setdefault("priority", Priority.NORMAL)
+                metadata.setdefault("group_earliest_timestamp", MAX_TIMESTAMP)
+                self._queue.append(task)
+                continue
+
+            # R2 deduplication: keep one (user_id, provider) task, preferring
+            # the older timestamp under timestamp-ordering rule.
+            existing_task = self._queue[existing_index]
+            incoming_ts = self._timestamp_for_task(task)
+            existing_ts = self._timestamp_for_task(existing_task)
+            if incoming_ts < existing_ts:
+                existing_task.timestamp = task.timestamp
+
         return self.size
 
     def dequeue(self) -> TaskDispatch | None:
@@ -364,3 +403,4 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
