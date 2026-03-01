@@ -45,8 +45,8 @@ def call_size() -> QueueActionBuilder:
 def call_dequeue() -> QueueActionBuilder:
     return QueueActionBuilder(
         "dequeue",
-        expect_factory=lambda provider, user_id, timestamp: TaskDispatch(
-            provider=provider, user_id=user_id, timestamp=timestamp
+        expect_factory=lambda provider, user_id, *_: TaskDispatch(
+            provider=provider, user_id=user_id
         ),
     )
 
@@ -54,10 +54,9 @@ def call_dequeue() -> QueueActionBuilder:
 def call_dequeue_full() -> QueueActionBuilder:
     return QueueActionBuilder(
         "dequeue",
-        expect_factory=lambda provider, user_id, timestamp: {
+        expect_factory=lambda provider, user_id, *_: {
             "provider": provider,
             "user_id": user_id,
-            "timestamp": timestamp,
         },
     )
 
@@ -174,7 +173,6 @@ def normalize_dispatch(item: Any) -> dict[str, Any] | None:
     return {
         "provider": getattr(item, "provider"),
         "user_id": getattr(item, "user_id"),
-        "timestamp": getattr(item, "timestamp", None),
     }
 
 
@@ -203,4 +201,3 @@ __all__ = [
     "normalize_dispatch",
     "dequeue_task",
 ]
-

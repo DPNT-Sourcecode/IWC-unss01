@@ -157,25 +157,6 @@ class Queue:
             return datetime.fromisoformat(timestamp).replace(tzinfo=None)
         return timestamp
 
-    @staticmethod
-    def _dispatch_timestamp_for_task(task: TaskSubmission) -> str:
-        """Return timestamp string for dequeue payload.
-
-        Args:
-            task: Task being dispatched.
-
-        Returns:
-            Timestamp string for response payload. Existing string inputs are
-            preserved. ``datetime`` values are formatted as
-            ``YYYY-MM-DD HH:MM:SS``.
-        """
-        timestamp = task.timestamp
-        if isinstance(timestamp, str):
-            return timestamp
-        if isinstance(timestamp, datetime):
-            return timestamp.replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-        return str(timestamp)
-
     def enqueue(self, item: TaskSubmission) -> int:
         """Enqueue a task and all required dependencies.
 
@@ -256,7 +237,6 @@ class Queue:
         return TaskDispatch(
             provider=task.provider,
             user_id=task.user_id,
-            timestamp=self._dispatch_timestamp_for_task(task),
         )
 
     @property
@@ -384,8 +364,3 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
-
-
-
-
-

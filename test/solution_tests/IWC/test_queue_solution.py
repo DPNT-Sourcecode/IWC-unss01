@@ -59,10 +59,9 @@ def test_enqueue_returns_current_queue_size() -> None:
     )
 
 
-def test_dequeue_returns_required_fields_including_timestamp() -> None:
+def test_dequeue_returns_required_fields() -> None:
     """
-    IWC_R1 dequeue contract requires:
-    provider, user_id, timestamp.
+    IWC_R1 dequeue payload should expose provider and user_id.
     """
     ts = scenario_ts(delta_seconds=0)
     run_queue(
@@ -243,4 +242,3 @@ def test_user_id_string_is_supported_end_to_end() -> None:
             call_size().expect(0),
         ]
     )
-

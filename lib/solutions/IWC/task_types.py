@@ -30,15 +30,10 @@ class TaskDispatch:
     Attributes:
         provider: Upstream service identifier to be processed.
         user_id: Customer identifier for the dispatched task.
-        timestamp: Dispatch timestamp payload in challenge format.
     """
 
     provider: str
     user_id: int | str
-    timestamp: str
 
 
 __all__ = ["TaskSubmission", "TaskDispatch"]
-
-
-

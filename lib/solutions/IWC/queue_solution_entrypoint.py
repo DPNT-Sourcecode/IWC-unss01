@@ -76,6 +76,3 @@ class QueueSolutionEntrypoint:
             ``True`` when the queue has been cleared successfully.
         """
         return self._queue.purge()
-
-
-
