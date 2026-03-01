@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from dataclasses import asdict, is_dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable
 
 from solutions.IWC.queue_solution_entrypoint import QueueSolutionEntrypoint
@@ -70,5 +71,87 @@ def run_queue(actions: Iterable[dict[str, Any]]) -> None:
                 )
             )
 
+# Fixed base timestamp for deterministic scenario tests.
+# This keeps ordering assertions stable and easy to read.
+SCENARIO_BASE = datetime(2025, 10, 20, 12, 0, 0)
 
-__all__ = ["iso_ts", "call_enqueue", "call_size", "call_dequeue", "run_queue"]
+
+def scenario_ts(*, delta_seconds: int = 0) -> str:
+    """
+    Deterministic timestamp in challenge format: YYYY-MM-DD HH:MM:SS.
+    """
+    return (SCENARIO_BASE + timedelta(seconds=delta_seconds)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+
+def now_ts(*, delta_seconds: int = 0) -> str:
+    """
+    Wall-clock timestamp for age behavior tests.
+    """
+    return (datetime.now() + timedelta(seconds=delta_seconds)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+
+def new_queue() -> QueueSolutionEntrypoint:
+    """Create a fresh queue instance for each test."""
+    return QueueSolutionEntrypoint()
+
+
+def task_submission(provider: str, user_id: int, timestamp: str) -> TaskSubmission:
+    """Build TaskSubmission payloads consistently."""
+    return TaskSubmission(provider=provider, user_id=user_id, timestamp=timestamp)
+
+
+def enqueue_task(
+    queue: QueueSolutionEntrypoint, provider: str, user_id: int, timestamp: str
+) -> int:
+    """Enqueue helper returning queue size after insertion."""
+    return queue.enqueue(task_submission(provider, user_id, timestamp))
+
+
+def normalize_dispatch(item: Any) -> dict[str, Any] | None:
+    """
+    Normalize dequeue output so tests can assert plain dictionaries.
+
+    Supports None, dataclass payloads, dict payloads, and generic objects.
+    """
+    if item is None:
+        return None
+
+    if is_dataclass(item):
+        return asdict(item)
+
+    if isinstance(item, dict):
+        return dict(item)
+
+    return {
+        "provider": getattr(item, "provider"),
+        "user_id": getattr(item, "user_id"),
+        "timestamp": getattr(item, "timestamp", None),
+    }
+
+
+def dequeue_task(queue: QueueSolutionEntrypoint) -> dict[str, Any] | None:
+    """Dequeue helper returning normalized dict or None."""
+    return normalize_dispatch(queue.dequeue())
+
+
+__all__ = [
+    "DEFAULT_SCENARIO_BASE",
+    "iso_ts",
+    "QueueActionBuilder",
+    "call_enqueue",
+    "call_size",
+    "call_dequeue",
+    "run_queue",
+    "scenario_ts",
+    "now_ts",
+    "new_queue",
+    "task_submission",
+    "enqueue_task",
+    "normalize_dispatch",
+    "dequeue_task",
+]
+
