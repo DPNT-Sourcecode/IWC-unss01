@@ -501,6 +501,3 @@ def test_dependency_and_bank_deprioritization_apply_together() -> None:
             call_size().expect(0),
         ]
     )
-
-
-
