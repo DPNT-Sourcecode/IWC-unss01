@@ -282,7 +282,7 @@ def test_queue_keeps_single_identity_when_newer_duplicate_arrives() -> None:
         [
             call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
             call_enqueue("bank_statements", 1, "2025-10-20 12:05:00").expect(1),
-            call_enqueue("id_verification", 1, "2025-10-20 12:05:00").expect(2),
+            call_enqueue("id_verification", 1, "2025-10-20 12:04:59").expect(2),
             call_dequeue().expect("id_verification", 1),
             call_dequeue().expect("bank_statements", 1),
             call_size().expect(0),
@@ -364,10 +364,84 @@ def test_rule_of_three_uses_unique_pending_tasks() -> None:
             call_enqueue("bank_statements", 1, "2025-10-20 12:01:00").expect(1),
             call_enqueue("id_verification", 1, "2025-10-20 12:02:00").expect(2),
             call_enqueue("companies_house", 1, "2025-10-20 12:03:00").expect(3),
-            call_enqueue("bank_statements", 2, "2025-10-20 11:00:00").expect(4),
+            call_enqueue("bank_statements", 2, "2025-10-20 12:02:30").expect(4),
             call_dequeue().expect("id_verification", 1),
             call_dequeue().expect("companies_house", 1),
             call_dequeue().expect("bank_statements", 1),
+            call_dequeue().expect("bank_statements", 2),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_time_sensitive_bank_statements_example_one() -> None:
+    """
+    R5 Example #1:
+    old-enough bank_statements can move ahead of newer tasks, but not older ones.
+    """
+    run_queue(
+        [
+            call_enqueue("id_verification", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("bank_statements", 2, "2025-10-20 12:01:00").expect(2),
+            call_enqueue("companies_house", 3, "2025-10-20 12:07:00").expect(3),
+            call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("bank_statements", 2),
+            call_dequeue().expect("companies_house", 3),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_time_sensitive_bank_statements_example_two_fifo_tie_breaker() -> None:
+    """
+    R5 Example #2:
+    prioritised bank_statements ties should dequeue FIFO.
+    """
+    run_queue(
+        [
+            call_enqueue("id_verification", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("bank_statements", 2, "2025-10-20 12:02:00").expect(2),
+            call_enqueue("bank_statements", 1, "2025-10-20 12:02:00").expect(3),
+            call_enqueue("companies_house", 1, "2025-10-20 12:03:00").expect(4),
+            call_enqueue("companies_house", 3, "2025-10-20 12:10:00").expect(5),
+            call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("bank_statements", 2),
+            call_dequeue().expect("bank_statements", 1),
+            call_dequeue().expect("companies_house", 1),
+            call_dequeue().expect("companies_house", 3),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_time_sensitive_bank_statements_boundary_at_five_minutes() -> None:
+    """
+    Exactly five minutes should trigger time-sensitive bank prioritisation.
+    """
+    run_queue(
+        [
+            call_enqueue("id_verification", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("bank_statements", 2, "2025-10-20 12:05:00").expect(2),
+            call_enqueue("companies_house", 3, "2025-10-20 12:10:00").expect(3),
+            call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("bank_statements", 2),
+            call_dequeue().expect("companies_house", 3),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_bank_statements_younger_than_five_minutes_behaves_as_before() -> None:
+    """
+    If bank_statements is not old enough, R3 deprioritisation still applies.
+    """
+    run_queue(
+        [
+            call_enqueue("id_verification", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("bank_statements", 2, "2025-10-20 12:02:00").expect(2),
+            call_enqueue("companies_house", 3, "2025-10-20 12:06:00").expect(3),
+            call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("companies_house", 3),
             call_dequeue().expect("bank_statements", 2),
             call_size().expect(0),
         ]
@@ -427,5 +501,6 @@ def test_dependency_and_bank_deprioritization_apply_together() -> None:
             call_size().expect(0),
         ]
     )
+
 
 

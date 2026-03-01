@@ -1,17 +1,19 @@
 """Core in-memory queue implementation for IWC task dispatch.
 
-The queue applies six contract rules:
+The queue applies seven contract rules:
 - User promotion when a user has 3 or more pending tasks.
 - Oldest-first ordering for tasks with equal priority.
 - Provider dependency insertion during enqueue.
 - Identity uniqueness per ``(user_id, provider)`` pair.
 - ``bank_statements`` tasks are deprioritized behind other providers.
+- Old-enough ``bank_statements`` tasks can be promoted.
 - Queue age as the timestamp span between oldest and newest pending tasks.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from enum import IntEnum
+from functools import cmp_to_key
 
 # LEGACY CODE ASSET
 # RESOLVED on deploy
@@ -68,6 +70,7 @@ REGISTERED_PROVIDERS: list[Provider] = [
 ]
 
 BANK_STATEMENTS_PROVIDER_NAME = BANK_STATEMENTS_PROVIDER.name
+TIME_SENSITIVE_BANK_THRESHOLD_SECONDS = 300
 
 
 class Queue:
@@ -128,6 +131,31 @@ class Queue:
             tasks.extend(self._collect_dependencies(dependency_task))
             tasks.append(dependency_task)
         return tasks
+
+    @staticmethod
+    def _is_time_sensitive_bank_task(
+        task: TaskSubmission,
+        *,
+        newest_timestamp: datetime,
+        task_timestamp: datetime,
+    ) -> bool:
+        """Return whether a bank task is old enough to bypass normal deprioritization.
+
+        A ``bank_statements`` task is time-sensitive when its timestamp is at least
+        five minutes older than the newest task currently in the queue.
+
+        Args:
+            task: Task being evaluated for special bank promotion.
+            newest_timestamp: Maximum timestamp among pending queue tasks.
+            task_timestamp: Pre-normalized timestamp for ``task``.
+
+        Returns:
+            ``True`` when task qualifies for time-sensitive promotion.
+        """
+        if task.provider != BANK_STATEMENTS_PROVIDER_NAME:
+            return False
+        age_seconds = (newest_timestamp - task_timestamp).total_seconds()
+        return age_seconds >= TIME_SENSITIVE_BANK_THRESHOLD_SECONDS
 
     @staticmethod
     def _bank_deprioritization_rank(task: TaskSubmission) -> int:
@@ -230,8 +258,9 @@ class Queue:
         Ordering behavior:
             1. Promote users with 3 or more queued tasks.
             2. Sort promoted groups by each user's earliest queued timestamp.
-            3. Deprioritize ``bank_statements`` behind other providers.
-            4. Break ties by task timestamp (oldest first).
+            3. Promote time-sensitive ``bank_statements`` tasks (5+ minutes old).
+            4. Deprioritize non-time-sensitive ``bank_statements`` tasks.
+            5. Break ties by task timestamp (oldest first), then FIFO.
 
         Returns:
             The next ``TaskDispatch`` payload, or ``None`` when queue is empty.
@@ -274,14 +303,70 @@ class Queue:
                 metadata["group_earliest_timestamp"] = current_earliest
                 metadata["priority"] = priority_level
 
-        self._queue.sort(
-            key=lambda i: (
-                self._priority_for_task(i),
-                self._earliest_group_timestamp_for_task(i),
-                self._bank_deprioritization_rank(i),
-                self._timestamp_for_task(i),
+        timestamps_by_id: dict[int, datetime] = {
+            id(task): self._timestamp_for_task(task) for task in self._queue
+        }
+        newest_timestamp = max(timestamps_by_id.values())
+        time_sensitive_bank_by_id: dict[int, bool] = {
+            id(task): self._is_time_sensitive_bank_task(
+                task,
+                newest_timestamp=newest_timestamp,
+                task_timestamp=timestamps_by_id[id(task)],
             )
-        )
+            for task in self._queue
+        }
+
+        def compare_tasks(left: TaskSubmission, right: TaskSubmission) -> int:
+            left_id = id(left)
+            right_id = id(right)
+            left_ts = timestamps_by_id[left_id]
+            right_ts = timestamps_by_id[right_id]
+            left_time_sensitive = time_sensitive_bank_by_id[left_id]
+            right_time_sensitive = time_sensitive_bank_by_id[right_id]
+
+            # If both are time-sensitive bank tasks, order by timestamp and
+            # fall back to FIFO for exact timestamp ties.
+            if left_time_sensitive and right_time_sensitive:
+                if left_ts < right_ts:
+                    return -1
+                if left_ts > right_ts:
+                    return 1
+                return 0
+
+            # Time-sensitive bank tasks can bypass normally-prioritized tasks,
+            # but they must not skip tasks with older timestamps.
+            if left_time_sensitive and not right_time_sensitive:
+                if right_ts < left_ts:
+                    return 1
+                if right_ts > left_ts:
+                    return -1
+                return 0
+            if right_time_sensitive and not left_time_sensitive:
+                if left_ts < right_ts:
+                    return -1
+                if left_ts > right_ts:
+                    return 1
+                return 0
+
+            left_key = (
+                self._priority_for_task(left),
+                self._earliest_group_timestamp_for_task(left),
+                self._bank_deprioritization_rank(left),
+                left_ts,
+            )
+            right_key = (
+                self._priority_for_task(right),
+                self._earliest_group_timestamp_for_task(right),
+                self._bank_deprioritization_rank(right),
+                right_ts,
+            )
+            if left_key < right_key:
+                return -1
+            if left_key > right_key:
+                return 1
+            return 0
+
+        self._queue.sort(key=cmp_to_key(compare_tasks))
 
         task = self._queue.pop(0)
         return TaskDispatch(
@@ -408,5 +493,6 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
 
 
