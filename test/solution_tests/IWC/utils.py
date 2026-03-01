@@ -51,14 +51,57 @@ def call_dequeue() -> QueueActionBuilder:
     )
 
 
-def run_queue(actions: Iterable[dict[str, Any]]) -> None:
-    queue = QueueSolutionEntrypoint()
+def call_dequeue_full() -> QueueActionBuilder:
+    return QueueActionBuilder(
+        "dequeue",
+        expect_factory=lambda provider, user_id, timestamp: {
+            "provider": provider,
+            "user_id": user_id,
+            "timestamp": timestamp,
+        },
+    )
+
+
+def call_dequeue_none() -> QueueActionBuilder:
+    return QueueActionBuilder("dequeue", expect_factory=lambda: None)
+
+
+def call_age() -> QueueActionBuilder:
+    return QueueActionBuilder("age")
+
+
+def call_purge() -> QueueActionBuilder:
+    return QueueActionBuilder("purge")
+
+
+def _canonicalize(value: Any) -> Any:
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, dict):
+        return {k: _canonicalize(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_canonicalize(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_canonicalize(item) for item in value)
+    return value
+
+
+def run_queue(
+    actions: Iterable[dict[str, Any]], queue: QueueSolutionEntrypoint | None = None
+) -> None:
+    queue = queue or QueueSolutionEntrypoint()
     for position, step in enumerate(actions, start=1):
         method: Callable[..., Any] = getattr(queue, step["name"])
         args = () if step["input"] is None else (step["input"],)
         actual = method(*args)
         expected = step["expect"]
-        if actual != expected:
+
+        if callable(expected):
+            matched = expected(actual)
+        else:
+            matched = _canonicalize(actual) == _canonicalize(expected)
+
+        if not matched:
             payload = step.get("input")
             payload_repr = "" if payload is None else f" input={payload!r}"
             raise AssertionError(
@@ -145,6 +188,10 @@ __all__ = [
     "call_enqueue",
     "call_size",
     "call_dequeue",
+    "call_dequeue_full",
+    "call_dequeue_none",
+    "call_age",
+    "call_purge",
     "run_queue",
     "scenario_ts",
     "now_ts",
@@ -154,4 +201,5 @@ __all__ = [
     "normalize_dispatch",
     "dequeue_task",
 ]
+
 
