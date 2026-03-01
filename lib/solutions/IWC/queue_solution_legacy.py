@@ -1,10 +1,11 @@
-"""IWC legacy queue implementation.
+"""Core in-memory queue implementation for IWC task dispatch.
 
-The queue stores pending provider tasks and applies legacy prioritization rules:
-- Rule of 3 user promotion.
-- Timestamp ordering for tasks of equal priority.
-- Dependency expansion during enqueue.
-- Task uniqueness per ``(user_id, provider)`` pair.
+The queue applies five contract rules:
+- User promotion when a user has 3 or more pending tasks.
+- Oldest-first ordering for tasks with equal priority.
+- Provider dependency insertion during enqueue.
+- Identity uniqueness per ``(user_id, provider)`` pair.
+- Queue age as seconds since the oldest pending task.
 """
 
 from dataclasses import dataclass
@@ -67,33 +68,25 @@ REGISTERED_PROVIDERS: list[Provider] = [
 
 
 class Queue:
-    """In-memory legacy queue used by the IWC challenge runner.
-
-    The queue is intentionally simple and keeps all tasks in a list so behavior
-    remains explicit and easy to reason about for challenge rounds.
-    """
+    """In-memory queue with deterministic ordering and dependency handling."""
 
     def __init__(self):
-        """Create an empty queue instance.
-
-        Returns:
-            None.
-        """
-        self._queue = []
+        """Create an empty queue instance."""
+        self._queue: list[TaskSubmission] = []
 
     @staticmethod
-    def _task_identity(task: TaskSubmission) -> tuple[int | str, str]:
+    def _identity_key(task: TaskSubmission) -> tuple[int | str, str]:
         """Return the uniqueness identity for a task.
 
         Args:
             task: Task to identify in queue.
 
         Returns:
-            Tuple ``(user_id, provider)`` used to enforce queue uniqueness.
+            Tuple ``(user_id, provider)`` used for identity uniqueness checks.
         """
         return task.user_id, task.provider
 
-    def _find_task_index_by_identity(self, task: TaskSubmission) -> int | None:
+    def _find_index_by_identity(self, task: TaskSubmission) -> int | None:
         """Find index of an existing task with the same identity.
 
         Args:
@@ -102,9 +95,9 @@ class Queue:
         Returns:
             Index in internal queue when duplicate exists, otherwise ``None``.
         """
-        key = self._task_identity(task)
+        key = self._identity_key(task)
         for index, queued_task in enumerate(self._queue):
-            if self._task_identity(queued_task) == key:
+            if self._identity_key(queued_task) == key:
                 return index
         return None
 
@@ -183,7 +176,7 @@ class Queue:
             return timestamp.replace(tzinfo=None)
         if isinstance(timestamp, str):
             return datetime.fromisoformat(timestamp).replace(tzinfo=None)
-        return timestamp
+        raise TypeError(f"Unsupported timestamp type: {type(timestamp)!r}")
 
     def enqueue(self, item: TaskSubmission) -> int:
         """Enqueue a task and all required dependencies.
@@ -197,7 +190,7 @@ class Queue:
         tasks = [*self._collect_dependencies(item), item]
 
         for task in tasks:
-            existing_index = self._find_task_index_by_identity(task)
+            existing_index = self._find_index_by_identity(task)
             if existing_index is None:
                 metadata = task.metadata
                 metadata.setdefault("priority", Priority.NORMAL)
@@ -215,15 +208,12 @@ class Queue:
         return self.size
 
     def dequeue(self) -> TaskDispatch | None:
-        """Dequeue the next task according to legacy queue rules.
+        """Dequeue the next task according to queue ordering rules.
 
         Ordering behavior:
             1. Promote users with 3 or more queued tasks.
             2. Sort promoted groups by each user's earliest queued timestamp.
             3. Break ties by task timestamp (oldest first).
-
-        Args:
-            None.
 
         Returns:
             The next ``TaskDispatch`` payload, or ``None`` when queue is empty.
@@ -291,9 +281,6 @@ class Queue:
     def age(self) -> int:
         """Internal queue age in seconds.
 
-        Args:
-            None.
-
         Returns:
             ``0`` when empty; otherwise seconds since the oldest pending task
             timestamp. Negative values are clamped to ``0``.
@@ -309,9 +296,6 @@ class Queue:
 
     def purge(self) -> bool:
         """Clear all pending tasks from the queue.
-
-        Args:
-            None.
 
         Returns:
             ``True`` when queue clear operation completes.
@@ -403,5 +387,6 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
 
 

@@ -51,16 +51,6 @@ def call_dequeue() -> QueueActionBuilder:
     )
 
 
-def call_dequeue_full() -> QueueActionBuilder:
-    return QueueActionBuilder(
-        "dequeue",
-        expect_factory=lambda provider, user_id: {
-            "provider": provider,
-            "user_id": user_id,
-        },
-    )
-
-
 def call_dequeue_none() -> QueueActionBuilder:
     return QueueActionBuilder("dequeue", expect_factory=lambda: None)
 
@@ -188,7 +178,6 @@ __all__ = [
     "call_enqueue",
     "call_size",
     "call_dequeue",
-    "call_dequeue_full",
     "call_dequeue_none",
     "call_age",
     "call_purge",
@@ -201,4 +190,5 @@ __all__ = [
     "normalize_dispatch",
     "dequeue_task",
 ]
+
 

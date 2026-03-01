@@ -1,23 +1,16 @@
-"""Public IWC queue entrypoint exposed to the challenge runner.
-
-This module provides a small facade around the legacy queue implementation so
-the runner can interact with a stable API surface.
-"""
+"""Public API wrapper for the IWC queue implementation."""
 
 from __future__ import annotations
 
 from solutions.IWC.queue_solution_legacy import Queue
 from solutions.IWC.task_types import TaskDispatch, TaskSubmission
 
+
 class QueueSolutionEntrypoint:
-    """Runner-facing facade around ``Queue``."""
+    """Facade exposing the queue contract used by the app and tests."""
 
     def __init__(self) -> None:
-        """Initialize a fresh in-memory queue instance.
-
-        Returns:
-            None.
-        """
+        """Initialize a fresh in-memory queue instance."""
         self._queue: Queue = Queue()
 
     def enqueue(self, task: TaskSubmission) -> int:
@@ -28,15 +21,12 @@ class QueueSolutionEntrypoint:
 
         Returns:
             The total number of queued tasks after enqueue, including any
-            dependency tasks added by the legacy implementation.
+            dependency tasks added by the queue implementation.
         """
         return self._queue.enqueue(task)
 
     def dequeue(self) -> TaskDispatch | None:
         """Return the next task according to queue ordering rules.
-
-        Args:
-            None.
 
         Returns:
             The next dispatch payload, or ``None`` when the queue is empty.
@@ -46,9 +36,6 @@ class QueueSolutionEntrypoint:
     def size(self) -> int:
         """Return the current number of pending tasks.
 
-        Args:
-            None.
-
         Returns:
             Pending queue size.
         """
@@ -56,9 +43,6 @@ class QueueSolutionEntrypoint:
 
     def age(self) -> int:
         """Return internal queue age in seconds.
-
-        Args:
-            None.
 
         Returns:
             Queue age in seconds, defined by the underlying queue
@@ -69,10 +53,8 @@ class QueueSolutionEntrypoint:
     def purge(self) -> bool:
         """Clear all queued tasks.
 
-        Args:
-            None.
-
         Returns:
             ``True`` when the queue has been cleared successfully.
         """
         return self._queue.purge()
+
