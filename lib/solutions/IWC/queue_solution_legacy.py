@@ -4,6 +4,7 @@ The queue stores pending provider tasks and applies legacy prioritization rules:
 - Rule of 3 user promotion.
 - Timestamp ordering for tasks of equal priority.
 - Dependency expansion during enqueue.
+- Task uniqueness per ``(user_id, provider)`` pair.
 """
 
 from dataclasses import dataclass
@@ -81,19 +82,19 @@ class Queue:
         self._queue = []
 
     @staticmethod
-    def _dedup_key_for_task(task: TaskSubmission) -> tuple[int | str, str]:
-        """Return deduplication key for a task.
+    def _task_identity(task: TaskSubmission) -> tuple[int | str, str]:
+        """Return the uniqueness identity for a task.
 
         Args:
             task: Task to identify in queue.
 
         Returns:
-            Tuple of ``(user_id, provider)`` used by R2 deduplication rule.
+            Tuple ``(user_id, provider)`` used to enforce queue uniqueness.
         """
         return task.user_id, task.provider
 
-    def _find_existing_task_index(self, task: TaskSubmission) -> int | None:
-        """Find index of an existing task with same ``(user_id, provider)``.
+    def _find_task_index_by_identity(self, task: TaskSubmission) -> int | None:
+        """Find index of an existing task with the same identity.
 
         Args:
             task: Task candidate for insertion.
@@ -101,9 +102,9 @@ class Queue:
         Returns:
             Index in internal queue when duplicate exists, otherwise ``None``.
         """
-        key = self._dedup_key_for_task(task)
+        key = self._task_identity(task)
         for index, queued_task in enumerate(self._queue):
-            if self._dedup_key_for_task(queued_task) == key:
+            if self._task_identity(queued_task) == key:
                 return index
         return None
 
@@ -196,7 +197,7 @@ class Queue:
         tasks = [*self._collect_dependencies(item), item]
 
         for task in tasks:
-            existing_index = self._find_existing_task_index(task)
+            existing_index = self._find_task_index_by_identity(task)
             if existing_index is None:
                 metadata = task.metadata
                 metadata.setdefault("priority", Priority.NORMAL)
@@ -204,8 +205,7 @@ class Queue:
                 self._queue.append(task)
                 continue
 
-            # R2 deduplication: keep one (user_id, provider) task, preferring
-            # the older timestamp under timestamp-ordering rule.
+            # Keep a single identity entry, preferring the older timestamp.
             existing_task = self._queue[existing_index]
             incoming_ts = self._timestamp_for_task(task)
             existing_ts = self._timestamp_for_task(existing_task)
@@ -403,4 +403,5 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
 

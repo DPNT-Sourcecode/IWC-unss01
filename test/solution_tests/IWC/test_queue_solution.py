@@ -26,7 +26,7 @@ def test_enqueue_size_dequeue_flow() -> None:
         [
             call_enqueue("companies_house", 1, scenario_ts(delta_seconds=0)).expect(1),
             call_size().expect(1),
-            call_dequeue_full().expect("companies_house", 1, scenario_ts(delta_seconds=0)),
+            call_dequeue_full().expect("companies_house", 1),
             call_size().expect(0),
         ]
     )
@@ -67,7 +67,7 @@ def test_dequeue_returns_required_fields() -> None:
     run_queue(
         [
             call_enqueue("bank_statements", 7, ts).expect(1),
-            call_dequeue_full().expect("bank_statements", 7, ts),
+            call_dequeue_full().expect("bank_statements", 7),
             call_size().expect(0),
         ]
     )
@@ -85,10 +85,10 @@ def test_rule_of_three_example_from_challenge() -> None:
             call_enqueue("bank_statements", 2, ts).expect(2),
             call_enqueue("id_verification", 1, ts).expect(3),
             call_enqueue("bank_statements", 1, ts).expect(4),
-            call_dequeue_full().expect("companies_house", 1, ts),
-            call_dequeue_full().expect("id_verification", 1, ts),
-            call_dequeue_full().expect("bank_statements", 1, ts),
-            call_dequeue_full().expect("bank_statements", 2, ts),
+            call_dequeue_full().expect("companies_house", 1),
+            call_dequeue_full().expect("id_verification", 1),
+            call_dequeue_full().expect("bank_statements", 1),
+            call_dequeue_full().expect("bank_statements", 2),
             call_size().expect(0),
         ]
     )
@@ -105,8 +105,8 @@ def test_timestamp_ordering_example_from_challenge() -> None:
         [
             call_enqueue("bank_statements", 1, newer).expect(1),
             call_enqueue("bank_statements", 2, older).expect(2),
-            call_dequeue_full().expect("bank_statements", 2, older),
-            call_dequeue_full().expect("bank_statements", 1, newer),
+            call_dequeue_full().expect("bank_statements", 2),
+            call_dequeue_full().expect("bank_statements", 1),
             call_size().expect(0),
         ]
     )
@@ -122,8 +122,8 @@ def test_dependency_resolution_example_from_challenge() -> None:
         [
             call_enqueue("credit_check", 1, ts).expect(2),
             call_size().expect(2),
-            call_dequeue_full().expect("companies_house", 1, ts),
-            call_dequeue_full().expect("credit_check", 1, ts),
+            call_dequeue_full().expect("companies_house", 1),
+            call_dequeue_full().expect("credit_check", 1),
             call_size().expect(0),
         ]
     )
@@ -139,7 +139,7 @@ def test_size_tracks_pending_items_across_operations() -> None:
             call_enqueue("bank_statements", 1, scenario_ts(delta_seconds=0)).expect(1),
             call_enqueue("id_verification", 2, scenario_ts(delta_seconds=1)).expect(2),
             call_size().expect(2),
-            call_dequeue_full().expect("bank_statements", 1, scenario_ts(delta_seconds=0)),
+            call_dequeue_full().expect("bank_statements", 1),
             call_size().expect(1),
             call_purge().expect(True),
             call_size().expect(0),
@@ -161,7 +161,7 @@ def test_purge_clears_queue_and_instance_is_reusable() -> None:
             call_dequeue_none().expect(),
             call_enqueue("companies_house", 9, scenario_ts(delta_seconds=2)).expect(1),
             call_size().expect(1),
-            call_dequeue_full().expect("companies_house", 9, scenario_ts(delta_seconds=2)),
+            call_dequeue_full().expect("companies_house", 9),
             call_size().expect(0),
         ]
     )
@@ -209,7 +209,7 @@ def test_age_returns_zero_after_queue_becomes_empty() -> None:
     run_queue(
         [
             call_enqueue("bank_statements", 1, ts).expect(1),
-            call_dequeue_full().expect("bank_statements", 1, ts),
+            call_dequeue_full().expect("bank_statements", 1),
             call_size().expect(0),
             call_age().expect(0),
         ]
@@ -224,7 +224,7 @@ def test_user_id_integer_is_supported_end_to_end() -> None:
     run_queue(
         [
             call_enqueue("id_verification", 123, ts).expect(1),
-            call_dequeue_full().expect("id_verification", 123, ts),
+            call_dequeue_full().expect("id_verification", 123),
             call_size().expect(0),
         ]
     )
@@ -238,15 +238,15 @@ def test_user_id_string_is_supported_end_to_end() -> None:
     run_queue(
         [
             call_enqueue("companies_house", "customer-42", ts).expect(1),
-            call_dequeue_full().expect("companies_house", "customer-42", ts),
+            call_dequeue_full().expect("companies_house", "customer-42"),
             call_size().expect(0),
         ]
     )
 
 
-def test_r2_deduplicate_keeps_single_pair_when_newer_duplicate_arrives() -> None:
+def test_deduplicate_keeps_single_pair_when_newer_duplicate_arrives() -> None:
     """
-    IWC_R2: duplicate (user_id, provider) tasks should collapse into one item.
+    Duplicate (user_id, provider) tasks should collapse into one item.
     Newer duplicates must not replace older timestamps.
     """
     run_queue(
@@ -261,9 +261,9 @@ def test_r2_deduplicate_keeps_single_pair_when_newer_duplicate_arrives() -> None
     )
 
 
-def test_r2_deduplicate_replaces_existing_when_older_duplicate_arrives() -> None:
+def test_deduplicate_replaces_existing_when_older_duplicate_arrives() -> None:
     """
-    IWC_R2: when duplicate timestamps differ, dedup should keep the older one.
+    When duplicate timestamps differ, queue should keep the older one.
     """
     run_queue(
         [
@@ -277,9 +277,9 @@ def test_r2_deduplicate_replaces_existing_when_older_duplicate_arrives() -> None
     )
 
 
-def test_r2_deduplicate_is_scoped_to_user_provider_pair() -> None:
+def test_deduplicate_is_scoped_to_user_provider_pair() -> None:
     """
-    IWC_R2: same provider for different users are distinct tasks and must not deduplicate.
+    Same provider for different users are distinct tasks and must not deduplicate.
     """
     run_queue(
         [
@@ -293,9 +293,9 @@ def test_r2_deduplicate_is_scoped_to_user_provider_pair() -> None:
     )
 
 
-def test_r2_deduplicate_applies_to_dependency_tasks() -> None:
+def test_deduplicate_applies_to_dependency_tasks() -> None:
     """
-    IWC_R2: dedup applies even when the duplicate is introduced via dependencies.
+    Deduplication applies even when a duplicate is introduced via dependencies.
     """
     run_queue(
         [
@@ -308,9 +308,9 @@ def test_r2_deduplicate_applies_to_dependency_tasks() -> None:
     )
 
 
-def test_r2_duplicate_credit_check_deduplicates_both_self_and_dependency() -> None:
+def test_duplicate_credit_check_deduplicates_both_self_and_dependency() -> None:
     """
-    IWC_R2: enqueuing duplicate credit_check should not duplicate either
+    Enqueuing duplicate credit_check should not duplicate either
     credit_check itself or its companies_house dependency.
     """
     run_queue(
@@ -325,9 +325,9 @@ def test_r2_duplicate_credit_check_deduplicates_both_self_and_dependency() -> No
     )
 
 
-def test_r2_rule_of_three_uses_unique_tasks_after_deduplication() -> None:
+def test_rule_of_three_uses_unique_tasks_after_deduplication() -> None:
     """
-    IWC_R2 + legacy Rule-of-3: duplicates must not inflate user task counts.
+    Rule-of-3 should operate on unique queued tasks after deduplication.
     """
     run_queue(
         [
@@ -343,4 +343,5 @@ def test_r2_rule_of_three_uses_unique_tasks_after_deduplication() -> None:
             call_size().expect(0),
         ]
     )
+
 

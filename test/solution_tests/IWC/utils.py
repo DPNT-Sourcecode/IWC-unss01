@@ -45,7 +45,7 @@ def call_size() -> QueueActionBuilder:
 def call_dequeue() -> QueueActionBuilder:
     return QueueActionBuilder(
         "dequeue",
-        expect_factory=lambda provider, user_id, *_: TaskDispatch(
+        expect_factory=lambda provider, user_id: TaskDispatch(
             provider=provider, user_id=user_id
         ),
     )
@@ -54,7 +54,7 @@ def call_dequeue() -> QueueActionBuilder:
 def call_dequeue_full() -> QueueActionBuilder:
     return QueueActionBuilder(
         "dequeue",
-        expect_factory=lambda provider, user_id, *_: {
+        expect_factory=lambda provider, user_id: {
             "provider": provider,
             "user_id": user_id,
         },
@@ -201,3 +201,4 @@ __all__ = [
     "normalize_dispatch",
     "dequeue_task",
 ]
+
