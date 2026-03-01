@@ -135,14 +135,18 @@ class Queue:
         if self.size == 0:
             return None
 
-        user_ids = {task.user_id for task in self._queue}
         task_count: dict[int | str, int] = {}
         priority_timestamps: dict[int | str, datetime] = {}
-        for user_id in user_ids:
-            user_tasks = [t for t in self._queue if t.user_id == user_id]
-            earliest_task = min(user_tasks, key=self._timestamp_for_task)
-            priority_timestamps[user_id] = self._timestamp_for_task(earliest_task)
-            task_count[user_id] = len(user_tasks)
+        # Single-pass aggregation keeps behavior unchanged while avoiding
+        # repeated full-queue scans for each user.
+        for task in self._queue:
+            user_id = task.user_id
+            task_count[user_id] = task_count.get(user_id, 0) + 1
+
+            timestamp = self._timestamp_for_task(task)
+            earliest_for_user = priority_timestamps.get(user_id)
+            if earliest_for_user is None or timestamp < earliest_for_user:
+                priority_timestamps[user_id] = timestamp
 
         for task in self._queue:
             metadata = task.metadata
@@ -285,6 +289,7 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
 
 
 
