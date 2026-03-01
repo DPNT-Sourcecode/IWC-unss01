@@ -215,3 +215,32 @@ def test_age_returns_zero_after_queue_becomes_empty() -> None:
             call_age().expect(0),
         ]
     )
+
+
+def test_user_id_integer_is_supported_end_to_end() -> None:
+    """
+    user_id integer payloads should flow through enqueue/dequeue unchanged.
+    """
+    ts = scenario_ts(delta_seconds=3)
+    run_queue(
+        [
+            call_enqueue("id_verification", 123, ts).expect(1),
+            call_dequeue_full().expect("id_verification", 123, ts),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_user_id_string_is_supported_end_to_end() -> None:
+    """
+    user_id string payloads should flow through enqueue/dequeue unchanged.
+    """
+    ts = scenario_ts(delta_seconds=4)
+    run_queue(
+        [
+            call_enqueue("companies_house", "customer-42", ts).expect(1),
+            call_dequeue_full().expect("companies_house", "customer-42", ts),
+            call_size().expect(0),
+        ]
+    )
+

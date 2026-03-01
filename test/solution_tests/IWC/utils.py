@@ -31,7 +31,7 @@ class QueueActionBuilder:
         return {"name": self._name, "input": self._payload, "expect": expectation}
 
 
-def call_enqueue(provider: str, user_id: int, timestamp: str) -> QueueActionBuilder:
+def call_enqueue(provider: str, user_id: int | str, timestamp: str) -> QueueActionBuilder:
     return QueueActionBuilder(
         "enqueue",
         TaskSubmission(provider=provider, user_id=user_id, timestamp=timestamp),
@@ -45,8 +45,8 @@ def call_size() -> QueueActionBuilder:
 def call_dequeue() -> QueueActionBuilder:
     return QueueActionBuilder(
         "dequeue",
-        expect_factory=lambda provider, user_id: TaskDispatch(
-            provider=provider, user_id=user_id
+        expect_factory=lambda provider, user_id, timestamp: TaskDispatch(
+            provider=provider, user_id=user_id, timestamp=timestamp
         ),
     )
 
@@ -142,13 +142,15 @@ def new_queue() -> QueueSolutionEntrypoint:
     return QueueSolutionEntrypoint()
 
 
-def task_submission(provider: str, user_id: int, timestamp: str) -> TaskSubmission:
+def task_submission(
+    provider: str, user_id: int | str, timestamp: str
+) -> TaskSubmission:
     """Build TaskSubmission payloads consistently."""
     return TaskSubmission(provider=provider, user_id=user_id, timestamp=timestamp)
 
 
 def enqueue_task(
-    queue: QueueSolutionEntrypoint, provider: str, user_id: int, timestamp: str
+    queue: QueueSolutionEntrypoint, provider: str, user_id: int | str, timestamp: str
 ) -> int:
     """Enqueue helper returning queue size after insertion."""
     return queue.enqueue(task_submission(provider, user_id, timestamp))
@@ -201,3 +203,4 @@ __all__ = [
     "normalize_dispatch",
     "dequeue_task",
 ]
+

@@ -24,23 +24,26 @@ class TaskSubmission:
     """
 
     provider: str
-    user_id: int
+    user_id: int | str
     timestamp: datetime | str
     metadata: dict[str, object] = field(default_factory=dict)
+
 
 @dataclass
 class TaskDispatch:
     """Payload returned by ``Queue.dequeue``.
 
-    Note:
-        IWC_R1 contract expects ``timestamp`` to be included in dequeue
-        responses. This dataclass currently exposes only ``provider`` and
-        ``user_id`` and is a planned implementation update point.
+    Attributes:
+        provider: Upstream service identifier to be processed.
+        user_id: Customer identifier for the dispatched task.
+        timestamp: Dispatch timestamp payload in challenge format.
     """
 
     provider: str
-    user_id: int
+    user_id: int | str
+    timestamp: str
 
 
 __all__ = ["TaskSubmission", "TaskDispatch"]
+
 
