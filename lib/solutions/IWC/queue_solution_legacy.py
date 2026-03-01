@@ -1,10 +1,11 @@
 """Core in-memory queue implementation for IWC task dispatch.
 
-The queue applies five contract rules:
+The queue applies six contract rules:
 - User promotion when a user has 3 or more pending tasks.
 - Oldest-first ordering for tasks with equal priority.
 - Provider dependency insertion during enqueue.
 - Identity uniqueness per ``(user_id, provider)`` pair.
+- ``bank_statements`` tasks are deprioritized behind other providers.
 - Queue age as seconds since the oldest pending task.
 """
 
@@ -66,6 +67,8 @@ REGISTERED_PROVIDERS: list[Provider] = [
     ID_VERIFICATION_PROVIDER,
 ]
 
+BANK_STATEMENTS_PROVIDER_NAME = BANK_STATEMENTS_PROVIDER.name
+
 
 class Queue:
     """In-memory queue with deterministic ordering and dependency handling."""
@@ -125,6 +128,20 @@ class Queue:
             tasks.extend(self._collect_dependencies(dependency_task))
             tasks.append(dependency_task)
         return tasks
+
+    @staticmethod
+    def _bank_deprioritization_rank(task: TaskSubmission) -> int:
+        """Return ordering rank used to delay ``bank_statements`` tasks.
+
+        Args:
+            task: Task being considered for dequeue ordering.
+
+        Returns:
+            ``1`` for ``bank_statements`` tasks, otherwise ``0``.
+        """
+        if task.provider == BANK_STATEMENTS_PROVIDER_NAME:
+            return 1
+        return 0
 
     @staticmethod
     def _priority_for_task(task: TaskSubmission) -> Priority:
@@ -213,7 +230,8 @@ class Queue:
         Ordering behavior:
             1. Promote users with 3 or more queued tasks.
             2. Sort promoted groups by each user's earliest queued timestamp.
-            3. Break ties by task timestamp (oldest first).
+            3. Deprioritize ``bank_statements`` behind other providers.
+            4. Break ties by task timestamp (oldest first).
 
         Returns:
             The next ``TaskDispatch`` payload, or ``None`` when queue is empty.
@@ -236,28 +254,18 @@ class Queue:
 
         for task in self._queue:
             metadata = task.metadata
-            current_earliest = metadata.get("group_earliest_timestamp", MAX_TIMESTAMP)
-            raw_priority = metadata.get("priority")
-            try:
-                priority_level = Priority(raw_priority)
-            except (TypeError, ValueError):
-                priority_level = None
-
-            if priority_level is None or priority_level == Priority.NORMAL:
-                metadata["group_earliest_timestamp"] = MAX_TIMESTAMP
-                if task_count[task.user_id] >= 3:
-                    metadata["group_earliest_timestamp"] = priority_timestamps[task.user_id]
-                    metadata["priority"] = Priority.HIGH
-                else:
-                    metadata["priority"] = Priority.NORMAL
+            if task_count[task.user_id] >= 3:
+                metadata["group_earliest_timestamp"] = priority_timestamps[task.user_id]
+                metadata["priority"] = Priority.HIGH
             else:
-                metadata["group_earliest_timestamp"] = current_earliest
-                metadata["priority"] = priority_level
+                metadata["group_earliest_timestamp"] = MAX_TIMESTAMP
+                metadata["priority"] = Priority.NORMAL
 
         self._queue.sort(
             key=lambda i: (
                 self._priority_for_task(i),
                 self._earliest_group_timestamp_for_task(i),
+                self._bank_deprioritization_rank(i),
                 self._timestamp_for_task(i),
             )
         )
@@ -387,6 +395,7 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
 
 
 

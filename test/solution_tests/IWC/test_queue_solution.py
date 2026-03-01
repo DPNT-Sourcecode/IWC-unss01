@@ -141,7 +141,7 @@ def test_size_tracks_pending_items_across_operations() -> None:
             call_enqueue("bank_statements", 1, scenario_ts(delta_seconds=0)).expect(1),
             call_enqueue("id_verification", 2, scenario_ts(delta_seconds=1)).expect(2),
             call_size().expect(2),
-            call_dequeue().expect("bank_statements", 1),
+            call_dequeue().expect("id_verification", 2),
             call_size().expect(1),
             call_purge().expect(True),
             call_size().expect(0),
@@ -256,8 +256,8 @@ def test_queue_keeps_single_identity_when_newer_duplicate_arrives() -> None:
             call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
             call_enqueue("bank_statements", 1, "2025-10-20 12:05:00").expect(1),
             call_enqueue("id_verification", 1, "2025-10-20 12:05:00").expect(2),
-            call_dequeue().expect("bank_statements", 1),
             call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("bank_statements", 1),
             call_size().expect(0),
         ]
     )
@@ -272,8 +272,8 @@ def test_queue_keeps_oldest_timestamp_for_same_identity() -> None:
             call_enqueue("bank_statements", 1, "2025-10-20 12:05:00").expect(1),
             call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
             call_enqueue("id_verification", 1, "2025-10-20 12:01:00").expect(2),
-            call_dequeue().expect("bank_statements", 1),
             call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("bank_statements", 1),
             call_size().expect(0),
         ]
     )
@@ -338,13 +338,69 @@ def test_rule_of_three_uses_unique_pending_tasks() -> None:
             call_enqueue("id_verification", 1, "2025-10-20 12:02:00").expect(2),
             call_enqueue("companies_house", 1, "2025-10-20 12:03:00").expect(3),
             call_enqueue("bank_statements", 2, "2025-10-20 11:00:00").expect(4),
-            call_dequeue().expect("bank_statements", 1),
             call_dequeue().expect("id_verification", 1),
             call_dequeue().expect("companies_house", 1),
             call_dequeue().expect("bank_statements", 2),
+            call_dequeue().expect("bank_statements", 1),
             call_size().expect(0),
         ]
     )
+
+
+def test_bank_statements_deprioritized_without_rule_of_three_example_case() -> None:
+    """
+    R3 reference example:
+    bank_statements should run after faster providers when user is not Rule-of-3 prioritized.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("id_verification", 1, "2025-10-20 12:01:00").expect(2),
+            call_enqueue("companies_house", 2, "2025-10-20 12:02:00").expect(3),
+            call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("companies_house", 2),
+            call_dequeue().expect("bank_statements", 1),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_rule_of_three_user_bank_statements_runs_after_users_other_tasks() -> None:
+    """
+    R3 rule interaction:
+    when a user is Rule-of-3 prioritized, their bank_statements task runs after
+    all their other tasks.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("companies_house", 1, "2025-10-20 12:01:00").expect(2),
+            call_enqueue("id_verification", 1, "2025-10-20 12:02:00").expect(3),
+            call_enqueue("companies_house", 2, "2025-10-20 12:10:00").expect(4),
+            call_dequeue().expect("companies_house", 1),
+            call_dequeue().expect("id_verification", 1),
+            call_dequeue().expect("companies_house", 2),
+            call_dequeue().expect("bank_statements", 1),
+            call_size().expect(0),
+        ]
+    )
+
+
+def test_dependency_and_bank_deprioritization_apply_together() -> None:
+    """
+    Dependency resolution and bank deprioritization should compose safely.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("credit_check", 1, "2025-10-20 12:01:00").expect(3),
+            call_dequeue().expect("companies_house", 1),
+            call_dequeue().expect("credit_check", 1),
+            call_dequeue().expect("bank_statements", 1),
+            call_size().expect(0),
+        ]
+    )
+
 
 
 
