@@ -20,6 +20,3 @@ class SumSolution:
         if not (0 <= x <= 100) or not (0 <= y <= 100):
             raise ValueError(f"Both arguments x:{x} and y:{y} must be between 0 and 100")
         return x + y
-
-
-

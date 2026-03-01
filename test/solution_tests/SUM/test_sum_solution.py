@@ -42,6 +42,3 @@ class TestSum():
             assert False, "Should have raised TypeError for float"
         except TypeError:
             pass
-
-
-
