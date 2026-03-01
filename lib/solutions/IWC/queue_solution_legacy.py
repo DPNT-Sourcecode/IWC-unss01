@@ -1,22 +1,4 @@
-"""IWC legacy queue implementation.
-
-This module intentionally preserves legacy queue behavior while we evolve it
-towards the Round 1 (``IWC_R1``) contract.
-
-R1 behavior that must be satisfied end-to-end:
-- Rule of 3: if a user has 3 or more queued tasks, all of their tasks are
-  processed before normal-priority users.
-- Timestamp ordering: within equal priority tiers, older timestamps are
-  processed first.
-- Dependency resolution: enqueuing a task also enqueues its dependencies before
-  the task itself.
-- Method contracts:
-  - ``enqueue`` returns current queue size.
-  - ``dequeue`` returns ``provider``, ``user_id``, and ``timestamp`` or ``None``.
-  - ``size`` returns pending task count.
-  - ``age`` returns queue internal age in seconds.
-  - ``purge`` clears the queue and returns ``True``.
-"""
+"""IWC legacy queue implementation."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -303,5 +285,6 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
 
 

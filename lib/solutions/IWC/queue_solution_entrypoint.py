@@ -1,9 +1,4 @@
-"""Public IWC queue entrypoint exposed to the challenge runner.
-
-This class intentionally stays thin and delegates all behavior to ``Queue``.
-Contract details for IWC_R1 are documented here so runner-facing behavior is
-explicit and testable.
-"""
+"""Public IWC queue entrypoint exposed to the challenge runner."""
 
 from __future__ import annotations
 
@@ -36,4 +31,5 @@ class QueueSolutionEntrypoint:
     def purge(self) -> bool:
         """Clear all queued tasks and return success status."""
         return self._queue.purge()
+
 
