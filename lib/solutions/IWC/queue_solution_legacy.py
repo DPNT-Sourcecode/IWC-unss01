@@ -340,13 +340,13 @@ class Queue:
                     return 1
                 if right_ts > left_ts:
                     return -1
-                return 0
+                return -1
             if right_time_sensitive and not left_time_sensitive:
                 if left_ts < right_ts:
                     return -1
                 if left_ts > right_ts:
                     return 1
-                return 0
+                return 1
 
             left_key = (
                 self._priority_for_task(left),
@@ -493,3 +493,4 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+

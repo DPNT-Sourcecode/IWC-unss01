@@ -448,6 +448,24 @@ def test_bank_statements_younger_than_five_minutes_behaves_as_before() -> None:
     )
 
 
+def test_time_sensitive_bank_can_precede_equal_timestamp_non_bank() -> None:
+    """
+    Time-sensitive bank tasks must not skip older tasks, but may come before
+    equal-timestamp non-bank tasks.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("companies_house", 1, "2025-10-20 12:00:00").expect(2),
+            call_enqueue("id_verification", 2, "2025-10-20 12:05:00").expect(3),
+            call_dequeue().expect("bank_statements", 1),
+            call_dequeue().expect("companies_house", 1),
+            call_dequeue().expect("id_verification", 2),
+            call_size().expect(0),
+        ]
+    )
+
+
 def test_bank_statements_deprioritized_without_rule_of_three_example_case() -> None:
     """
     R3 reference example:
@@ -501,3 +519,4 @@ def test_dependency_and_bank_deprioritization_apply_together() -> None:
             call_size().expect(0),
         ]
     )
+
