@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import time
-from datetime import datetime, timedelta
-
 from .utils import (
     call_age,
     call_dequeue,
@@ -12,8 +9,6 @@ from .utils import (
     call_enqueue,
     call_purge,
     call_size,
-    enqueue_task,
-    new_queue,
     run_queue,
     scenario_ts,
 )
@@ -182,25 +177,57 @@ def test_age_empty_queue_is_zero_seconds() -> None:
     )
 
 
-def test_age_tracks_oldest_pending_task_in_seconds() -> None:
+def test_age_returns_span_between_oldest_and_newest_timestamps() -> None:
     """
-    age() should represent internal queue age in seconds.
-    This test validates non-empty queue aging against an old timestamp.
+    R4 age metric should be the timestamp span within the queue.
     """
-    queue = new_queue()
-    ninety_seconds_ago = (datetime.now() - timedelta(seconds=90)).strftime(
-        "%Y-%m-%d %H:%M:%S"
+    run_queue(
+        [
+            call_enqueue("id_verification", 1, "2025-10-20 12:00:00").expect(1),
+            call_age().expect(0),
+            call_enqueue("companies_house", 2, "2025-10-20 12:05:00").expect(2),
+            call_age().expect(300),
+        ]
     )
 
-    enqueue_task(queue, "bank_statements", 42, ninety_seconds_ago)
-    first_age = queue.age()
-    assert isinstance(first_age, int)
-    assert 80 <= first_age <= 180
+def test_age_is_order_independent_of_enqueue_sequence() -> None:
+    """
+    age() should use min/max timestamps regardless of enqueue order.
+    """
+    run_queue(
+        [
+            call_enqueue("id_verification", 1, "2025-10-20 12:10:00").expect(1),
+            call_enqueue("companies_house", 2, "2025-10-20 12:00:00").expect(2),
+            call_age().expect(600),
+        ]
+    )
 
-    time.sleep(1.1)
-    second_age = queue.age()
-    assert isinstance(second_age, int)
-    assert second_age >= first_age + 1
+
+def test_age_respects_deduplication_timestamp_resolution() -> None:
+    """
+    age() should reflect deduplicated identity timestamps (older duplicate kept).
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:10:00").expect(1),
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("id_verification", 2, "2025-10-20 12:15:00").expect(2),
+            call_age().expect(900),
+        ]
+    )
+
+
+def test_age_includes_dependency_inserted_tasks() -> None:
+    """
+    age() should account for dependency tasks inserted during enqueue.
+    """
+    run_queue(
+        [
+            call_enqueue("bank_statements", 1, "2025-10-20 12:00:00").expect(1),
+            call_enqueue("credit_check", 2, "2025-10-20 12:05:00").expect(3),
+            call_age().expect(300),
+        ]
+    )
 
 
 def test_age_returns_zero_after_queue_becomes_empty() -> None:
@@ -400,4 +427,5 @@ def test_dependency_and_bank_deprioritization_apply_together() -> None:
             call_size().expect(0),
         ]
     )
+
 

@@ -6,7 +6,7 @@ The queue applies six contract rules:
 - Provider dependency insertion during enqueue.
 - Identity uniqueness per ``(user_id, provider)`` pair.
 - ``bank_statements`` tasks are deprioritized behind other providers.
-- Queue age as seconds since the oldest pending task.
+- Queue age as the timestamp span between oldest and newest pending tasks.
 """
 
 from dataclasses import dataclass
@@ -303,16 +303,16 @@ class Queue:
         """Internal queue age in seconds.
 
         Returns:
-            ``0`` when empty; otherwise seconds since the oldest pending task
-            timestamp. Negative values are clamped to ``0``.
+            ``0`` when empty; otherwise the time gap between the oldest and
+            newest pending task timestamps.
         """
         if self.size == 0:
             return 0
 
-        oldest_task = min(self._queue, key=self._timestamp_for_task)
-        oldest_timestamp = self._timestamp_for_task(oldest_task)
-        now = datetime.now().replace(tzinfo=None)
-        age_seconds = int((now - oldest_timestamp).total_seconds())
+        timestamps = [self._timestamp_for_task(task) for task in self._queue]
+        oldest_timestamp = min(timestamps)
+        newest_timestamp = max(timestamps)
+        age_seconds = int((newest_timestamp - oldest_timestamp).total_seconds())
         return max(0, age_seconds)
 
     def purge(self) -> bool:
@@ -408,4 +408,5 @@ async def queue_worker():
         logger.info(f"Finished task: {task}")
 ```
 """
+
 
