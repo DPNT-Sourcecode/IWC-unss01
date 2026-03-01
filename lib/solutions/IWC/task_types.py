@@ -1,10 +1,4 @@
-"""Typed payloads shared across IWC queue layers.
-
-These dataclasses define the boundary contract used by:
-- the queue implementation,
-- the IWC queue entrypoint,
-- and tests validating IWC_R1 behavior.
-"""
+"""Typed payloads shared across IWC queue layers."""
 
 from __future__ import annotations
 
@@ -45,5 +39,6 @@ class TaskDispatch:
 
 
 __all__ = ["TaskSubmission", "TaskDispatch"]
+
 
 
